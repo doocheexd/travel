@@ -1,0 +1,864 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>旅遊行程編輯系統</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: espresso top bar, working area below; trip editor = days rail | item list | form. SQL drawer floats bottom-right. */
+:root{
+  --bg:#FFFFFF; --surface:#F7F3F1; --surface2:#EFE7E3; --line:#E3D7D2;
+  --fg:#2E2220; --muted:#76655F; --bar:#3D2C29; --bar-fg:#FFFFFF;
+  --accent:#C2513A; --accent-soft:#FBE3DA; --accent-fg:#FFFFFF;
+  --ok:#3F7A55; --ok-soft:#DDEFE3; --warn:#B07A12; --danger:#A33A3A; --danger-soft:#F6DCDC;
+  --code-bg:#2B201E; --code-fg:#F3E6E1;
+  --font:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1E1716; --surface:#2A211F; --surface2:#352A27; --line:#463834;
+  --fg:#F3E9E5; --muted:#B5A39D; --bar:#140F0E; --bar-fg:#F3E9E5;
+  --accent:#E57A60; --accent-soft:#4A2A22; --accent-fg:#1E1716;
+  --ok:#7CC197; --ok-soft:#21392A; --warn:#E3B04B; --danger:#E58080; --danger-soft:#4A2626;
+  --code-bg:#110C0B; --code-fg:#F3E6E1; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1E1716; --surface:#2A211F; --surface2:#352A27; --line:#463834;
+  --fg:#F3E9E5; --muted:#B5A39D; --bar:#140F0E; --bar-fg:#F3E9E5;
+  --accent:#E57A60; --accent-soft:#4A2A22; --accent-fg:#1E1716;
+  --ok:#7CC197; --ok-soft:#21392A; --warn:#E3B04B; --danger:#E58080; --danger-soft:#4A2626;
+  --code-bg:#110C0B; --code-fg:#F3E6E1; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.6}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{text-wrap:balance;margin:0;line-height:1.3}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+/* top bar */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bar)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bar);color:var(--bar-fg)}
+.bar .wrap{display:flex;align-items:center;gap:16px;min-height:60px;flex-wrap:wrap;padding-block:8px}
+.brand{font-weight:700;font-size:18px;letter-spacing:.02em;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand svg{width:22px;height:22px}
+.nav{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.nav button{background:transparent;border:0;color:var(--bar-fg);opacity:.8;padding:6px 14px;border-radius:999px;cursor:pointer}
+.nav button:hover{opacity:1;background:rgba(255,255,255,.08)}
+.nav button[aria-current="true"]{background:var(--accent);opacity:1;color:#fff}
+.who{display:flex;align-items:center;gap:10px;font-size:14px;white-space:nowrap}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:14px}
+.bar .link{background:transparent;border:1px solid rgba(255,255,255,.35);color:var(--bar-fg);border-radius:999px;padding:3px 12px;cursor:pointer}
+main{padding-block:24px 96px}
+/* generic */
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.btn{border:0;border-radius:8px;padding:8px 16px;cursor:pointer;background:var(--accent);color:var(--accent-fg);font-weight:500;white-space:nowrap}
+.btn:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.btn.plain{background:var(--surface2);color:var(--fg)}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.sm{padding:4px 10px;font-size:13px;border-radius:6px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+.pill{display:inline-block;padding:1px 10px;border-radius:999px;font-size:12px;background:var(--accent-soft);color:var(--accent);font-weight:500;white-space:nowrap}
+.pill.owner{background:var(--accent);color:#fff}
+.pill.editor{background:var(--ok-soft);color:var(--ok)}
+.pill.viewer{background:var(--surface2);color:var(--muted)}
+.panel{background:var(--surface);border-radius:var(--r);padding:16px}
+label.f{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+label.f input,label.f select,label.f textarea{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--bg);color:var(--fg);font-size:15px;width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}}
+.empty{padding:28px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r)}
+.num{font-variant-numeric:tabular-nums}
+h2.page{font-size:24px;margin-bottom:4px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table.data{border-collapse:collapse;width:100%;font-size:14px}
+table.data th{background:var(--surface2);text-align:left;font-weight:600;padding:8px 12px;white-space:nowrap}
+table.data td{padding:8px 12px;border-top:1px solid var(--line);vertical-align:top}
+table.data td.n{text-align:right;font-variant-numeric:tabular-nums}
+/* login */
+.login{min-height:calc(100% - 0px);display:grid;place-items:center;padding-block:48px}
+.login-card{width:min(420px,100%);background:var(--surface);border-radius:16px;padding:28px;display:grid;gap:14px}
+.login-card h1{font-size:26px}
+.demo-acc{display:grid;gap:6px;font-size:13px}
+.demo-acc button{text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.demo-acc button:hover{border-color:var(--accent)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-block:16px 20px;overflow-x:auto}
+.tabs button{background:none;border:0;padding:8px 14px;cursor:pointer;color:var(--muted);border-bottom:2.5px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+/* trips list */
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:20px}
+.trip-card{background:var(--surface);border-radius:var(--r);padding:18px;display:grid;gap:10px;cursor:pointer;border:1.5px solid transparent;text-align:left}
+.trip-card:hover{border-color:var(--accent)}
+.trip-card h3{font-size:18px}
+.dates{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
+.stats{display:flex;gap:14px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.stats b{color:var(--fg);font-weight:600}
+/* editor */
+.editor{display:grid;grid-template-columns:200px minmax(0,1fr) 320px;gap:16px;align-items:start}
+@media (max-width:980px){.editor{grid-template-columns:170px minmax(0,1fr)}.editor .formcol{grid-column:1/-1}}
+@media (max-width:620px){.editor{grid-template-columns:1fr}}
+.days{display:grid;gap:8px}
+.day-btn{border:1.5px solid var(--accent);background:var(--bg);color:var(--accent);border-radius:8px;padding:8px 10px;text-align:left;cursor:pointer;display:grid}
+.day-btn small{color:var(--muted);font-variant-numeric:tabular-nums}
+.day-btn[aria-current="true"]{background:var(--accent);color:var(--accent-fg)}
+.day-btn[aria-current="true"] small{color:inherit;opacity:.85}
+.items{display:grid;gap:10px}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--bg)}
+.item .time{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;font-size:14px;min-width:96px}
+.item .title{font-weight:600}
+.item .meta{font-size:13px;color:var(--muted)}
+.item .acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:620px){.item{grid-template-columns:1fr}.item .acts{justify-content:flex-start}}
+.iconbtn{background:var(--surface2);border:0;border-radius:6px;width:30px;height:30px;cursor:pointer;display:grid;place-items:center;color:var(--fg)}
+.iconbtn:disabled{opacity:.35;cursor:default}
+.formcol{position:sticky;top:76px}
+.formcol form{display:grid;gap:10px}
+/* places */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-block:16px}
+.toolbar input,.toolbar select{border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+.toolbar input{flex:1;min-width:180px}
+.places{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.place{background:var(--surface);border-radius:var(--r);padding:16px;display:grid;gap:6px;align-content:start}
+.place h3{font-size:16px}
+/* expenses */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--surface);border-radius:var(--r);padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:13px;color:var(--muted)}
+.kpi.bad .v{color:var(--danger)} .kpi.good .v{color:var(--ok)}
+.split{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:860px){.split{grid-template-columns:1fr}}
+.bars{display:grid;gap:8px}
+.barrow{display:grid;grid-template-columns:70px minmax(0,1fr) 90px;gap:8px;align-items:center;font-size:14px}
+.track{height:10px;background:var(--surface2);border-radius:5px;overflow:hidden}
+.fill{height:100%;background:var(--accent);border-radius:5px}
+/* overview */
+.ov-day{display:grid;grid-template-columns:110px minmax(0,1fr);gap:16px;padding-block:14px;border-top:1px solid var(--line)}
+@media (max-width:560px){.ov-day{grid-template-columns:1fr}}
+.ov-day h3{font-size:16px}
+.ov-list{display:grid;gap:6px}
+.ov-list div{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px}
+/* sql console */
+.sql-area{width:100%;min-height:180px;font-family:var(--mono);font-size:14px;background:var(--code-bg);color:var(--code-fg);border:0;border-radius:var(--r);padding:14px;resize:vertical}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--surface2);border:0;border-radius:999px;padding:4px 12px;cursor:pointer;font-family:var(--mono);font-size:13px}
+.chip:hover{background:var(--accent-soft);color:var(--accent)}
+pre.code{font-family:var(--mono);font-size:13px;background:var(--code-bg);color:var(--code-fg);padding:14px;border-radius:var(--r);overflow-x:auto;white-space:pre-wrap;margin:0}
+/* sql drawer */
+.drawer-btn{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--code-bg);color:var(--code-fg);border:0;border-radius:999px;padding:10px 16px;font-family:var(--mono);font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.drawer{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:40;width:min(560px,calc(100vw - 32px));max-height:min(60vh,520px);background:var(--code-bg);color:var(--code-fg);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);display:grid;grid-template-rows:auto minmax(0,1fr)}
+.drawer header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.12);font-size:13px}
+.drawer header button{background:none;border:1px solid rgba(255,255,255,.25);color:inherit;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px}
+.log{overflow:auto;padding:8px 14px;display:grid;gap:8px;align-content:start}
+.log .e{font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;border-left:3px solid #E57A60;padding-left:8px}
+.log .e.w{border-color:#E3B04B}
+.log .e.err{border-color:#E58080;color:#F5B3B3}
+.log .t{opacity:.55;font-size:11px}
+/* modal + toast */
+.scrim{position:fixed;inset:0;background:rgba(20,12,10,.5);z-index:50;display:grid;place-items:center;padding:16px}
+.modal{background:var(--bg);border-radius:14px;width:min(520px,100%);max-height:90vh;overflow:auto;padding:22px;display:grid;gap:14px}
+.modal h3{font-size:19px}
+.modal .acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:60;background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;box-shadow:0 4px 18px rgba(0,0,0,.25);max-width:calc(100vw - 32px)}
+.toast.err{background:var(--danger);color:#fff}
+.loading{display:grid;place-items:center;min-height:60vh;color:var(--muted)}
+.note{font-size:13px;color:var(--muted);background:var(--surface);border-radius:8px;padding:8px 12px}
+@media (prefers-reduced-motion:no-preference){.toast{animation:pop .2s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,8px)}}}
+</style>
+
+<div id="app"><div class="loading">正在載入資料庫引擎…</div></div>
+<div id="layer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.14.2/dist/sql-asm.js"></script>
+<script>
+"use strict";
+/* ================= 資料庫層 ================= */
+const STORE_KEY = "travel-db-v2";
+let SQL, db;
+const sqlLog = [];
+let drawerOpen = false;
+
+const SCHEMA = `
+CREATE TABLE Users(
+  user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  email VARCHAR(100) NOT NULL UNIQUE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE Trips(
+  trip_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES Users(user_id),
+  title VARCHAR(100) NOT NULL,
+  destination VARCHAR(50),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  budget DECIMAL(10,2) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CHECK (end_date >= start_date)
+);
+CREATE TABLE TripMembers(
+  trip_id INTEGER NOT NULL REFERENCES Trips(trip_id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,
+  role VARCHAR(10) NOT NULL CHECK (role IN ('owner','editor','viewer')),
+  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (trip_id, user_id)
+);
+CREATE TABLE TripDays(
+  day_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES Trips(trip_id) ON DELETE CASCADE,
+  day_number TINYINT NOT NULL,
+  trip_date DATE NOT NULL,
+  memo VARCHAR(200),
+  UNIQUE (trip_id, day_number)
+);
+CREATE TABLE Categories(
+  category_id INTEGER PRIMARY KEY,
+  category_name VARCHAR(20) NOT NULL UNIQUE
+);
+CREATE TABLE Places(
+  place_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  category_id INTEGER NOT NULL REFERENCES Categories(category_id),
+  name VARCHAR(100) NOT NULL,
+  address VARCHAR(200),
+  phone VARCHAR(20),
+  open_hours VARCHAR(100)
+);
+CREATE TABLE ItineraryItems(
+  item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_id INTEGER NOT NULL REFERENCES TripDays(day_id) ON DELETE CASCADE,
+  place_id INTEGER REFERENCES Places(place_id) ON DELETE SET NULL,
+  start_time TIME,
+  end_time TIME,
+  sort_order TINYINT NOT NULL DEFAULT 1,
+  transport VARCHAR(20),
+  notes VARCHAR(255),
+  CHECK (start_time IS NULL OR end_time IS NULL OR end_time > start_time)
+);
+CREATE TABLE Expenses(
+  expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES Trips(trip_id) ON DELETE CASCADE,
+  paid_by INTEGER NOT NULL REFERENCES Users(user_id),
+  amount DECIMAL(10,2) NOT NULL CHECK (amount > 0),
+  expense_type VARCHAR(20) NOT NULL,
+  note VARCHAR(100),
+  spent_on DATE
+);`;
+
+function fmtSQL(sql, params) {
+  let i = 0;
+  const s = sql.replace(/\s+/g, " ").trim();
+  if (!params || !params.length) return s;
+  return s.replace(/\?/g, () => {
+    const v = params[i++];
+    if (v === null || v === undefined) return "NULL";
+    if (typeof v === "number") return String(v);
+    return "'" + String(v).replace(/'/g, "''") + "'";
+  });
+}
+function logSQL(text, kind) {
+  sqlLog.unshift({ text, kind: kind || "r", t: new Date().toLocaleTimeString("zh-TW", { hour12: false }) });
+  if (sqlLog.length > 80) sqlLog.pop();
+}
+/** 查詢：回傳物件陣列 */
+function q(sql, params = [], silent) {
+  if (!silent) logSQL(fmtSQL(sql, params));
+  const st = db.prepare(sql);
+  st.bind(params);
+  const rows = [];
+  while (st.step()) rows.push(st.getAsObject());
+  st.free();
+  return rows;
+}
+function q1(sql, params, silent) { return q(sql, params, silent)[0]; }
+/** 寫入：INSERT / UPDATE / DELETE */
+function run(sql, params = []) {
+  logSQL(fmtSQL(sql, params), "w");
+  db.run(sql, params);
+  return db.exec("SELECT last_insert_rowid() AS id")[0].values[0][0];
+}
+function tx(fn) {
+  db.run("BEGIN");
+  try { const r = fn(); db.run("COMMIT"); save(); return r; }
+  catch (e) { db.run("ROLLBACK"); logSQL("錯誤：" + e.message, "err"); throw e; }
+}
+function save() {
+  try {
+    const bytes = db.export();
+    db.run("PRAGMA foreign_keys = ON");
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    localStorage.setItem(STORE_KEY, btoa(bin));
+  } catch (e) { db.run("PRAGMA foreign_keys = ON"); }
+}
+function loadSaved() {
+  try {
+    const b = localStorage.getItem(STORE_KEY);
+    if (!b) return null;
+    const bin = atob(b), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  } catch (e) { return null; }
+}
+async function sha256(s) {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) { // 備用：簡易雜湊（非安全情境）
+    let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return "djb2$" + h.toString(16);
+  }
+}
+function addDays(iso, n) {
+  const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function dayDiff(a, b) { return Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000); }
+
+async function seed() {
+  db.run(SCHEMA);
+  db.run("PRAGMA foreign_keys = ON");
+  const pw = await sha256("1234");
+  const users = [["amy", "amy@example.com"], ["ben", "ben@example.com"], ["cindy", "cindy@example.com"]];
+  users.forEach(u => db.run("INSERT INTO Users(username,password_hash,email) VALUES(?,?,?)", [u[0], pw, u[1]]));
+  ["景點", "餐廳", "住宿", "交通", "購物"].forEach((c, i) => db.run("INSERT INTO Categories VALUES(?,?)", [i + 1, c]));
+  const places = [
+    [1, "赤崁樓", "台南市中西區民族路二段212號"], [1, "安平古堡", "台南市安平區國勝路82號"],
+    [1, "神農街", "台南市中西區神農街"], [1, "奇美博物館", "台南市仁德區文華路二段66號"],
+    [2, "阿堂鹹粥", "台南市中西區"], [2, "度小月擔仔麵", "台南市中西區"], [2, "安平豆花", "台南市安平區"],
+    [3, "台南市區民宿（範例）", "台南市中西區"], [4, "台南火車站", "台南市東區"], [5, "林百貨", "台南市中西區忠義路二段63號"],
+    [1, "太魯閣國家公園", "花蓮縣秀林鄉"], [1, "七星潭", "花蓮縣新城鄉"], [2, "東大門夜市", "花蓮縣花蓮市"],
+    [1, "池上伯朗大道", "台東縣池上鄉"], [4, "花蓮火車站", "花蓮縣花蓮市"],
+  ];
+  places.forEach(p => db.run("INSERT INTO Places(category_id,name,address) VALUES(?,?,?)", p));
+  // 行程 1：台南（亞倢建立）
+  db.run("INSERT INTO Trips(owner_id,title,destination,start_date,end_date,budget) VALUES(1,'台南三日美食之旅','台南','2026-11-14','2026-11-16',9000)");
+  db.run("INSERT INTO TripMembers(trip_id,user_id,role) VALUES(1,1,'owner'),(1,2,'editor'),(1,3,'viewer')");
+  for (let i = 0; i < 3; i++) db.run("INSERT INTO TripDays(trip_id,day_number,trip_date,memo) VALUES(1,?,?,?)", [i + 1, addDays("2026-11-14", i), ["抵達台南，逛中西區", "安平一日遊", "博物館後返程"][i]]);
+  const it = [
+    [1, 9, "09:30", "10:00", 1, "高鐵＋接駁車", "抵達台南"], [1, 1, "10:30", "12:00", 2, "步行", null], [1, 5, "12:10", "13:00", 3, "步行", "午餐"],
+    [1, 10, "14:00", "16:00", 4, "公車", null], [1, 3, "17:00", "19:00", 5, "步行", "傍晚散步"], [1, 6, "19:00", "20:00", 6, "步行", "晚餐"],
+    [2, 2, "09:30", "11:30", 1, "公車", null], [2, 7, "11:40", "12:20", 2, "步行", "點心"], [2, null, "14:00", "17:00", 3, null, "自由活動・老街散步"],
+    [3, 4, "10:00", "15:00", 1, "計程車", "預約門票"], [3, 9, "16:30", "17:00", 2, "計程車", "返程"],
+  ];
+  it.forEach(r => db.run("INSERT INTO ItineraryItems(day_id,place_id,start_time,end_time,sort_order,transport,notes) VALUES(?,?,?,?,?,?,?)", r));
+  const ex = [[1, 1, 2980, "交通", "高鐵來回（範例）", "2026-11-14"], [1, 2, 360, "餐飲", "鹹粥三人份", "2026-11-14"], [1, 3, 2400, "住宿", "民宿兩晚訂金", "2026-11-14"], [1, 1, 300, "門票", "安平古堡門票", "2026-11-15"], [1, 2, 780, "餐飲", "晚餐", "2026-11-15"]];
+  ex.forEach(r => db.run("INSERT INTO Expenses(trip_id,paid_by,amount,expense_type,note,spent_on) VALUES(?,?,?,?,?,?)", r));
+  // 行程 2：花東（佳融建立）
+  db.run("INSERT INTO Trips(owner_id,title,destination,start_date,end_date,budget) VALUES(2,'花東縱谷四天三夜','花蓮、台東','2026-12-24','2026-12-27',20000)");
+  db.run("INSERT INTO TripMembers(trip_id,user_id,role) VALUES(2,2,'owner'),(2,1,'editor')");
+  for (let i = 0; i < 4; i++) db.run("INSERT INTO TripDays(trip_id,day_number,trip_date) VALUES(2,?,?)", [i + 1, addDays("2026-12-24", i)]);
+  [[4, 15, "10:00", "10:30", 1, "火車", "抵達花蓮"], [4, 11, "11:30", "16:00", 2, "租車", null], [4, 13, "18:30", "20:30", 3, "租車", "晚餐"], [5, 12, "08:00", "09:30", 1, "租車", "看日出"], [6, 14, "09:00", "11:00", 1, "租車", "騎腳踏車"]]
+    .forEach(r => db.run("INSERT INTO ItineraryItems(day_id,place_id,start_time,end_time,sort_order,transport,notes) VALUES(?,?,?,?,?,?,?)", r));
+  save();
+}
+
+async function initDB() {
+  SQL = await initSqlJs();
+  const saved = loadSaved();
+  if (saved) { try { db = new SQL.Database(saved); db.run("PRAGMA foreign_keys = ON"); q1("SELECT 1 FROM Users LIMIT 1", [], true); return; } catch (e) { /* 損毀就重建 */ } }
+  db = new SQL.Database(); await seed();
+}
+async function resetDB() {
+  try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  db = new SQL.Database(); await seed();
+  sqlLog.length = 0; logSQL("-- 已重設為範例資料", "w");
+}
+
+/* ================= 介面狀態 ================= */
+const S = { user: null, view: "trips", tripId: null, tab: "edit", dayId: null, editItem: null, placeQ: "", placeCat: "", sqlText: "SELECT t.title AS 行程, u.username AS 旅伴, m.role AS 角色\nFROM TripMembers m\nJOIN Trips t ON t.trip_id = m.trip_id\nJOIN Users u ON u.user_id = m.user_id\nORDER BY t.trip_id;", sqlResult: null };
+const $app = document.getElementById("app"), $layer = document.getElementById("layer");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = n => "NT$ " + Math.round(Number(n) || 0).toLocaleString("zh-TW");
+const ROLE = { owner: "擁有者", editor: "編輯者", viewer: "檢視者" };
+const WEEK = "日一二三四五六";
+const wd = iso => WEEK[new Date(iso + "T00:00:00Z").getUTCDay()];
+const md = iso => iso ? iso.slice(5).replace("-", "/") : "";
+const t5 = t => t ? String(t).slice(0, 5) : "";
+
+let toastTimer;
+function toast(msg, err) {
+  clearTimeout(toastTimer);
+  const el = document.createElement("div"); el.className = "toast" + (err ? " err" : ""); el.textContent = msg;
+  document.querySelectorAll(".toast").forEach(t => t.remove()); document.body.appendChild(el);
+  toastTimer = setTimeout(() => el.remove(), 2600);
+}
+function friendlyErr(e) {
+  const m = e.message || String(e);
+  if (/UNIQUE.*username/.test(m)) return "這個帳號名稱已被使用";
+  if (/UNIQUE.*email/.test(m)) return "這個電子郵件已被註冊";
+  if (/UNIQUE.*TripMembers|PRIMARY KEY/.test(m)) return "這位使用者已經是旅伴了";
+  if (/CHECK/.test(m) && /end_date/.test(m)) return "結束日期不可早於出發日期";
+  if (/CHECK/.test(m) && /amount/.test(m)) return "金額必須大於 0";
+  if (/CHECK/.test(m) && /end_time/.test(m)) return "結束時間必須晚於開始時間";
+  if (/CHECK constraint failed/.test(m)) return "資料不符合限制條件：" + m;
+  if (/FOREIGN KEY/.test(m)) return "有其他資料參照這筆資料，無法完成";
+  return m;
+}
+function attempt(fn, okMsg) {
+  try { const r = fn(); if (okMsg) toast(okMsg); render(); return r; }
+  catch (e) { toast(friendlyErr(e), true); render(); return undefined; }
+}
+
+/* ---- modal ---- */
+function modal(html, onSubmit) {
+  $layer.innerHTML = `<div class="scrim" data-scrim><form class="modal" id="modal-form">${html}</form></div>`;
+  const f = document.getElementById("modal-form");
+  f.addEventListener("submit", ev => { ev.preventDefault(); const data = Object.fromEntries(new FormData(f)); if (onSubmit(data, ev.submitter) !== false) closeModal(); });
+  f.querySelector("[data-close]")?.addEventListener("click", closeModal);
+  $layer.querySelector("[data-scrim]").addEventListener("click", ev => { if (ev.target.dataset.scrim !== undefined) closeModal(); });
+  setTimeout(() => f.querySelector("input,select,textarea")?.focus(), 30);
+}
+function closeModal() { $layer.innerHTML = ""; }
+function confirmBox(title, body, okLabel, fn) {
+  modal(`<h3>${esc(title)}</h3><p class="muted" style="margin:0">${body}</p><div class="acts"><button type="button" class="btn plain" data-close>取消</button><button class="btn danger">${esc(okLabel)}</button></div>`, () => { fn(); });
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $layer.innerHTML) closeModal(); });
+
+/* ================= 權限 ================= */
+function myRole(tripId) { const r = q1("SELECT role FROM TripMembers WHERE trip_id = ? AND user_id = ?", [tripId, S.user.user_id], true); return r ? r.role : null; }
+const canEdit = r => r === "owner" || r === "editor";
+
+/* ================= 畫面 ================= */
+const ICON_PLANE = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>`;
+
+function render() {
+  if (!S.user) return renderLogin();
+  const nav = [["trips", "我的行程"], ["places", "景點查詢"], ["expenses", "花費紀錄"], ["sql", "資料庫主控台"]];
+  const active = S.view === "trip" ? "trips" : S.view;
+  $app.innerHTML = `
+  <header class="bar"><div class="wrap">
+    <div class="brand">${ICON_PLANE}旅遊行程編輯系統</div>
+    <nav class="nav">${nav.map(([k, l]) => `<button data-go="${k}" aria-current="${active === k}">${l}</button>`).join("")}</nav>
+    <div class="who"><span class="avatar">${esc(S.user.username[0].toUpperCase())}</span><span>${esc(S.user.username)}</span><button class="link" data-act="logout">登出</button></div>
+  </div></header>
+  <main class="wrap" id="main">${viewHTML()}</main>
+  ${drawerHTML()}`;
+  afterRender();
+}
+function viewHTML() {
+  switch (S.view) {
+    case "trips": return tripsHTML();
+    case "trip": return tripHTML();
+    case "places": return placesHTML();
+    case "expenses": return expensesHomeHTML();
+    case "sql": return sqlHTML();
+  }
+  return "";
+}
+
+/* ---- 登入 ---- */
+function renderLogin(mode = "login") {
+  const accs = q("SELECT username, email FROM Users ORDER BY user_id LIMIT 3", [], true);
+  $app.innerHTML = `
+  <div class="login wrap"><div class="login-card">
+    <div class="row" style="color:var(--accent)">${ICON_PLANE.replace('<svg', '<svg width="28" height="28"')}</div>
+    <h1>旅遊行程編輯系統</h1>
+    <p class="muted" style="margin:0">${mode === "login" ? "登入後即可建立行程、邀請旅伴、安排每日行程與記錄花費。" : "建立新帳號，密碼會以 SHA-256 雜湊後存入 Users 資料表。"}</p>
+    <form id="auth" style="display:grid;gap:12px">
+      <label class="f">帳號<input id="au-user" name="username" required maxlength="50" autocomplete="username"></label>
+      ${mode === "register" ? `<label class="f">電子郵件<input id="au-mail" name="email" type="email" required maxlength="100"></label>` : ""}
+      <label class="f">密碼<input id="au-pass" name="password" type="password" required autocomplete="${mode === "login" ? "current-password" : "new-password"}"></label>
+      <button class="btn">${mode === "login" ? "登入" : "註冊並登入"}</button>
+    </form>
+    <button class="btn plain" id="au-switch">${mode === "login" ? "還沒有帳號？註冊新帳號" : "已有帳號，回到登入"}</button>
+    ${mode === "login" ? `<div class="demo-acc"><span class="muted">範例帳號（密碼皆為 1234），點一下自動填入：</span>${accs.map(a => `<button type="button" data-fill="${esc(a.username)}"><span>${esc(a.username)}</span><span class="muted">${esc(a.email)}</span></button>`).join("")}</div>` : ""}
+  </div></div>${drawerHTML()}`;
+  document.getElementById("au-switch").onclick = () => renderLogin(mode === "login" ? "register" : "login");
+  document.querySelectorAll("[data-fill]").forEach(b => b.onclick = () => { document.getElementById("au-user").value = b.dataset.fill; document.getElementById("au-pass").value = "1234"; });
+  document.getElementById("auth").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const d = Object.fromEntries(new FormData(ev.target));
+    const h = await sha256(d.password);
+    if (mode === "register") {
+      try { tx(() => run("INSERT INTO Users(username, password_hash, email) VALUES(?, ?, ?)", [d.username.trim(), h, d.email.trim()])); }
+      catch (e) { toast(friendlyErr(e), true); renderLogin(mode); return; }
+    }
+    const u = q1("SELECT user_id, username, email FROM Users WHERE username = ? AND password_hash = ?", [d.username.trim(), h]);
+    if (!u) { toast("帳號或密碼不正確", true); renderLogin(mode); return; }
+    S.user = u; S.view = "trips"; toast(mode === "register" ? "註冊成功，歡迎 " + u.username : "歡迎回來，" + u.username); render();
+  });
+  bindDrawer();
+}
+
+/* ---- 我的行程 ---- */
+function tripsHTML() {
+  const trips = q(`SELECT t.trip_id, t.title, t.destination, t.start_date, t.end_date, t.budget, m.role,
+      (SELECT COUNT(*) FROM TripMembers x WHERE x.trip_id = t.trip_id) AS members,
+      (SELECT COUNT(*) FROM ItineraryItems i JOIN TripDays d ON d.day_id = i.day_id WHERE d.trip_id = t.trip_id) AS items,
+      (SELECT IFNULL(SUM(amount),0) FROM Expenses e WHERE e.trip_id = t.trip_id) AS spent
+    FROM Trips t JOIN TripMembers m ON m.trip_id = t.trip_id
+    WHERE m.user_id = ? ORDER BY t.start_date`, [S.user.user_id]);
+  return `<div class="spread"><div><h2 class="page">我的行程</h2><div class="muted">你建立或受邀參與的行程，共 ${trips.length} 個</div></div>
+    <button class="btn" data-act="newTrip">＋ 新增行程</button></div>
+    ${trips.length ? `<div class="trips">${trips.map(t => `
+      <button class="trip-card" data-open="${t.trip_id}">
+        <div class="spread"><h3>${esc(t.title)}</h3><span class="pill ${t.role}">${ROLE[t.role]}</span></div>
+        <div class="dates">${esc(t.start_date)} – ${esc(t.end_date)}・${dayDiff(t.start_date, t.end_date) + 1} 天${t.destination ? "・" + esc(t.destination) : ""}</div>
+        <div class="stats"><span><b>${t.members}</b> 位旅伴</span><span><b>${t.items}</b> 個行程項目</span><span>已花 <b class="num">${money(t.spent)}</b>${Number(t.budget) ? " / " + money(t.budget) : ""}</span></div>
+      </button>`).join("")}</div>` : `<div class="empty" style="margin-top:20px">還沒有行程。按「＋ 新增行程」建立第一個旅行計畫。</div>`}`;
+}
+function tripForm(t) {
+  return `<h3>${t ? "編輯行程" : "新增行程"}</h3>
+    <label class="f">行程名稱<input name="title" required maxlength="100" value="${esc(t?.title)}" placeholder="例：台南三日美食之旅"></label>
+    <label class="f">目的地<input name="destination" maxlength="50" value="${esc(t?.destination)}"></label>
+    <div class="grid2"><label class="f">出發日期<input type="date" name="start_date" required value="${esc(t?.start_date)}"></label>
+    <label class="f">結束日期<input type="date" name="end_date" required value="${esc(t?.end_date)}"></label></div>
+    <label class="f">預算（新台幣）<input type="number" name="budget" min="0" step="1" value="${esc(t ? Math.round(t.budget) : "")}"></label>
+    ${t ? `<p class="note" style="margin:0">若縮短日期，多出來的天數與其中的行程項目會一起刪除（ON DELETE CASCADE）。</p>` : `<p class="note" style="margin:0">建立後會自動依日期產生每一天（TripDays），並把你加入旅伴（TripMembers，角色 owner）。</p>`}
+    <div class="acts"><button type="button" class="btn plain" data-close>取消</button><button class="btn">${t ? "儲存" : "建立行程"}</button></div>`;
+}
+function syncDays(tripId, start, end) {
+  const n = dayDiff(start, end) + 1;
+  if (n > 30) throw new Error("行程最多 30 天");
+  run("DELETE FROM TripDays WHERE trip_id = ? AND day_number > ?", [tripId, n]);
+  for (let i = 1; i <= n; i++) {
+    const ex = q1("SELECT day_id FROM TripDays WHERE trip_id = ? AND day_number = ?", [tripId, i], true);
+    if (ex) run("UPDATE TripDays SET trip_date = ? WHERE day_id = ?", [addDays(start, i - 1), ex.day_id]);
+    else run("INSERT INTO TripDays(trip_id, day_number, trip_date) VALUES(?, ?, ?)", [tripId, i, addDays(start, i - 1)]);
+  }
+}
+function newTrip() {
+  modal(tripForm(null), d => {
+    const id = attempt(() => tx(() => {
+      const id = run("INSERT INTO Trips(owner_id, title, destination, start_date, end_date, budget) VALUES(?, ?, ?, ?, ?, ?)", [S.user.user_id, d.title.trim(), d.destination.trim() || null, d.start_date, d.end_date, Number(d.budget) || 0]);
+      run("INSERT INTO TripMembers(trip_id, user_id, role) VALUES(?, ?, 'owner')", [id, S.user.user_id]);
+      syncDays(id, d.start_date, d.end_date);
+      return id;
+    }), "已建立行程");
+    if (id) { openTrip(id); }
+    return id ? true : false;
+  });
+}
+function openTrip(id) { S.view = "trip"; S.tripId = id; S.tab = "edit"; S.dayId = null; S.editItem = null; render(); window.scrollTo(0, 0); }
+
+/* ---- 單一行程 ---- */
+function getTrip() { return q1("SELECT * FROM Trips WHERE trip_id = ?", [S.tripId], true); }
+function tripHTML() {
+  const t = getTrip(); if (!t) { S.view = "trips"; return tripsHTML(); }
+  const role = myRole(S.tripId);
+  const tabs = [["edit", "每日行程"], ["members", "旅伴"], ["expenses", "花費"], ["overview", "行程總覽"]];
+  let body = "";
+  if (S.tab === "edit") body = editorHTML(t, role);
+  if (S.tab === "members") body = membersHTML(t, role);
+  if (S.tab === "expenses") body = expensesHTML(t, role);
+  if (S.tab === "overview") body = overviewHTML(t);
+  return `<button class="btn plain sm" data-go="trips">← 我的行程</button>
+  <div class="spread" style="margin-top:12px"><div>
+    <h2 class="page">${esc(t.title)}</h2>
+    <div class="muted num">${esc(t.start_date)}（${wd(t.start_date)}）– ${esc(t.end_date)}（${wd(t.end_date)}）${t.destination ? "・" + esc(t.destination) : ""}・你的角色 <span class="pill ${role}">${ROLE[role]}</span></div>
+  </div><div class="row">
+    ${canEdit(role) ? `<button class="btn ghost" data-act="editTrip">編輯行程資料</button>` : ""}
+    ${role === "owner" ? `<button class="btn ghost" style="--accent:var(--danger)" data-act="delTrip">刪除行程</button>` : ""}
+  </div></div>
+  <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}</button>`).join("")}</div>
+  ${body}`;
+}
+function editorHTML(t, role) {
+  const days = q("SELECT day_id, day_number, trip_date, memo FROM TripDays WHERE trip_id = ? ORDER BY day_number", [t.trip_id]);
+  if (!S.dayId || !days.find(d => d.day_id === S.dayId)) S.dayId = days[0]?.day_id;
+  const day = days.find(d => d.day_id === S.dayId);
+  const items = q(`SELECT i.*, p.name AS place_name, c.category_name
+      FROM ItineraryItems i LEFT JOIN Places p ON p.place_id = i.place_id LEFT JOIN Categories c ON c.category_id = p.category_id
+      WHERE i.day_id = ? ORDER BY i.sort_order, i.start_time`, [S.dayId]);
+  const editable = canEdit(role);
+  const places = q("SELECT p.place_id, p.name, c.category_name FROM Places p JOIN Categories c ON c.category_id = p.category_id ORDER BY c.category_id, p.name", [], true);
+  const e = S.editItem ? items.find(i => i.item_id === S.editItem) : null;
+  return `<div class="editor">
+    <aside class="days"><div class="muted small">天數</div>
+      ${days.map(d => `<button class="day-btn" data-day="${d.day_id}" aria-current="${d.day_id === S.dayId}"><span>第 ${d.day_number} 天</span><small>${md(d.trip_date)}（${wd(d.trip_date)}）</small></button>`).join("")}
+    </aside>
+    <section style="min-width:0">
+      <div class="spread" style="margin-bottom:10px"><h3 style="font-size:18px">第 ${day.day_number} 天　<span class="num">${md(day.trip_date)}（${wd(day.trip_date)}）</span></h3>
+        ${editable ? `<button class="btn plain sm" data-act="memo">${day.memo ? "修改備忘" : "＋ 當日備忘"}</button>` : ""}</div>
+      ${day.memo ? `<p class="note" style="margin:0 0 10px">${esc(day.memo)}</p>` : ""}
+      <div class="items">
+      ${items.length ? items.map((i, k) => `
+        <div class="item">
+          <div class="time">${t5(i.start_time) || "--:--"}${i.end_time ? "–" + t5(i.end_time) : ""}</div>
+          <div style="min-width:0"><div class="title">${esc(i.place_name || i.notes || "自由活動")} ${i.category_name ? `<span class="pill">${esc(i.category_name)}</span>` : ""}</div>
+            <div class="meta">${[i.transport ? "交通：" + esc(i.transport) : "", i.place_name && i.notes ? esc(i.notes) : ""].filter(Boolean).join("・") || "&nbsp;"}</div></div>
+          ${editable ? `<div class="acts">
+            <button class="iconbtn" title="上移" aria-label="上移" data-move="${i.item_id}" data-dir="-1" ${k === 0 ? "disabled" : ""}>↑</button>
+            <button class="iconbtn" title="下移" aria-label="下移" data-move="${i.item_id}" data-dir="1" ${k === items.length - 1 ? "disabled" : ""}>↓</button>
+            <button class="btn sm" data-edit-item="${i.item_id}">編輯</button>
+            <button class="btn sm danger" data-del-item="${i.item_id}">刪除</button></div>` : "<span></span>"}
+        </div>`).join("") : `<div class="empty">這一天還沒有安排。${editable ? "用右側表單新增第一個行程項目。" : ""}</div>`}
+      </div>
+    </section>
+    ${editable ? `<aside class="formcol panel">
+      <form id="item-form">
+        <h3 style="font-size:16px">${e ? "編輯行程項目" : "新增行程項目"}</h3>
+        <label class="f">景點（從景點資料選擇）<select id="if-place" name="place_id"><option value="">（不指定：自由活動、移動等）</option>
+          ${places.map(p => `<option value="${p.place_id}" ${e && e.place_id === p.place_id ? "selected" : ""}>${esc(p.category_name)}｜${esc(p.name)}</option>`).join("")}</select></label>
+        <div class="grid2"><label class="f">開始時間<input id="if-start" type="time" name="start_time" value="${esc(t5(e?.start_time))}"></label>
+        <label class="f">結束時間<input id="if-end" type="time" name="end_time" value="${esc(t5(e?.end_time))}"></label></div>
+        <label class="f">交通方式<input id="if-trans" name="transport" maxlength="20" list="trans-list" value="${esc(e?.transport)}"></label>
+        <datalist id="trans-list"><option value="步行"><option value="公車"><option value="捷運"><option value="火車"><option value="高鐵"><option value="計程車"><option value="租車"><option value="機車"></datalist>
+        <label class="f">備註（沒有景點時當作項目名稱）<input id="if-notes" name="notes" maxlength="255" value="${esc(e?.notes)}"></label>
+        <div class="row"><button class="btn">${e ? "儲存" : "新增"}</button>${e ? `<button type="button" class="btn plain" data-act="cancelEdit">取消</button>` : ""}</div>
+      </form></aside>` : `<aside class="formcol"><p class="note">你是檢視者，只能查看行程。請擁有者把你改成編輯者才能修改。</p></aside>`}
+  </div>`;
+}
+function membersHTML(t, role) {
+  const ms = q(`SELECT u.user_id, u.username, u.email, m.role, m.joined_at FROM TripMembers m JOIN Users u ON u.user_id = m.user_id
+    WHERE m.trip_id = ? ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.username`, [t.trip_id]);
+  const owner = role === "owner";
+  return `<div class="split"><div>
+    <div class="tablewrap"><table class="data"><thead><tr><th>帳號</th><th>電子郵件</th><th>角色</th><th>加入時間</th>${owner ? "<th></th>" : ""}</tr></thead><tbody>
+    ${ms.map(m => `<tr><td>${esc(m.username)}${m.user_id === S.user.user_id ? "（你）" : ""}</td><td class="muted">${esc(m.email)}</td>
+      <td>${owner && m.role !== "owner" ? `<select data-role="${m.user_id}" aria-label="變更 ${esc(m.username)} 的角色"><option value="editor" ${m.role === "editor" ? "selected" : ""}>編輯者</option><option value="viewer" ${m.role === "viewer" ? "selected" : ""}>檢視者</option></select>` : `<span class="pill ${m.role}">${ROLE[m.role]}</span>`}</td>
+      <td class="muted num small">${esc(String(m.joined_at || "").slice(0, 16))}</td>
+      ${owner ? `<td>${m.role !== "owner" ? `<button class="btn sm danger" data-kick="${m.user_id}">移除</button>` : ""}</td>` : ""}</tr>`).join("")}
+    </tbody></table></div></div>
+    <div class="panel">${owner ? `<form id="invite-form" style="display:grid;gap:10px"><h3 style="font-size:16px">邀請旅伴</h3>
+      <label class="f">對方的帳號<input id="inv-user" name="username" required placeholder="例：cindy"></label>
+      <label class="f">角色<select id="inv-role" name="role"><option value="editor">編輯者：可修改行程與花費</option><option value="viewer">檢視者：只能查看</option></select></label>
+      <button class="btn">邀請</button></form>` : `<p class="muted" style="margin:0">只有擁有者可以邀請或移除旅伴。</p>`}
+      <p class="note" style="margin:12px 0 0">使用者與行程是多對多關係，記錄在中介表 TripMembers，以 (trip_id, user_id) 為複合主鍵，所以同一人不會被重複加入。</p></div>
+  </div>`;
+}
+function expensesHTML(t, role) {
+  const sum = q1("SELECT IFNULL(SUM(amount),0) AS total, COUNT(*) AS n FROM Expenses WHERE trip_id = ?", [t.trip_id]);
+  const members = q("SELECT u.user_id, u.username FROM TripMembers m JOIN Users u ON u.user_id = m.user_id WHERE m.trip_id = ? ORDER BY u.user_id", [t.trip_id]);
+  const byType = q("SELECT expense_type, SUM(amount) AS s FROM Expenses WHERE trip_id = ? GROUP BY expense_type ORDER BY s DESC", [t.trip_id]);
+  const byPerson = q(`SELECT u.user_id, u.username, IFNULL(SUM(e.amount),0) AS paid FROM TripMembers m JOIN Users u ON u.user_id = m.user_id
+    LEFT JOIN Expenses e ON e.paid_by = u.user_id AND e.trip_id = m.trip_id WHERE m.trip_id = ? GROUP BY u.user_id ORDER BY u.user_id`, [t.trip_id]);
+  const list = q(`SELECT e.*, u.username FROM Expenses e JOIN Users u ON u.user_id = e.paid_by WHERE e.trip_id = ? ORDER BY e.spent_on DESC, e.expense_id DESC`, [t.trip_id]);
+  const budget = Number(t.budget) || 0, total = Number(sum.total), share = members.length ? total / members.length : 0;
+  const maxT = Math.max(1, ...byType.map(b => b.s));
+  const editable = canEdit(role);
+  return `<div class="kpis">
+    <div class="kpi"><div class="l">總花費（${sum.n} 筆）</div><div class="v">${money(total)}</div></div>
+    <div class="kpi"><div class="l">預算</div><div class="v">${budget ? money(budget) : "未設定"}</div></div>
+    <div class="kpi ${budget ? (budget - total < 0 ? "bad" : "good") : ""}"><div class="l">${budget - total < 0 ? "超出預算" : "預算剩餘"}</div><div class="v">${budget ? money(Math.abs(budget - total)) : "—"}</div></div>
+    <div class="kpi"><div class="l">每人平均分攤（${members.length} 人）</div><div class="v">${money(share)}</div></div>
+  </div>
+  <div class="split"><div style="display:grid;gap:16px;min-width:0">
+    ${editable ? `<form id="exp-form" class="panel" style="display:grid;gap:10px"><h3 style="font-size:16px">新增花費</h3>
+      <div class="grid2"><label class="f">金額<input id="ex-amt" type="number" name="amount" min="1" step="1" required></label>
+      <label class="f">類型<select id="ex-type" name="expense_type">${["餐飲", "交通", "住宿", "門票", "購物", "其他"].map(x => `<option>${x}</option>`).join("")}</select></label>
+      <label class="f">付款人<select id="ex-payer" name="paid_by">${members.map(m => `<option value="${m.user_id}" ${m.user_id === S.user.user_id ? "selected" : ""}>${esc(m.username)}</option>`).join("")}</select></label>
+      <label class="f">日期<input id="ex-date" type="date" name="spent_on" value="${esc(t.start_date)}" min="${esc(t.start_date)}" max="${esc(t.end_date)}"></label></div>
+      <label class="f">說明<input id="ex-note" name="note" maxlength="100"></label>
+      <div><button class="btn">新增花費</button></div></form>` : ""}
+    <div class="tablewrap"><table class="data"><thead><tr><th>日期</th><th>類型</th><th>說明</th><th>付款人</th><th style="text-align:right">金額</th>${editable ? "<th></th>" : ""}</tr></thead><tbody>
+      ${list.length ? list.map(e => `<tr><td class="num">${md(e.spent_on)}</td><td><span class="pill">${esc(e.expense_type)}</span></td><td>${esc(e.note)}</td><td>${esc(e.username)}</td><td class="n">${money(e.amount)}</td>${editable ? `<td><button class="btn sm danger" data-del-exp="${e.expense_id}">刪除</button></td>` : ""}</tr>`).join("") : `<tr><td colspan="6" class="muted">還沒有花費紀錄</td></tr>`}
+    </tbody></table></div>
+  </div>
+  <div style="display:grid;gap:16px">
+    <div class="panel"><h3 style="font-size:16px;margin-bottom:10px">依類型（GROUP BY expense_type）</h3>
+      <div class="bars">${byType.length ? byType.map(b => `<div class="barrow"><span>${esc(b.expense_type)}</span><div class="track"><div class="fill" style="width:${(b.s / maxT * 100).toFixed(1)}%"></div></div><span class="num" style="text-align:right">${money(b.s)}</span></div>`).join("") : `<span class="muted">尚無資料</span>`}</div></div>
+    <div class="panel"><h3 style="font-size:16px;margin-bottom:10px">分帳結算</h3>
+      <div class="tablewrap" style="background:var(--bg)"><table class="data"><thead><tr><th>旅伴</th><th style="text-align:right">已付</th><th style="text-align:right">應收／應付</th></tr></thead><tbody>
+      ${byPerson.map(p => { const d = p.paid - share; return `<tr><td>${esc(p.username)}</td><td class="n">${money(p.paid)}</td><td class="n" style="color:${d >= 0 ? "var(--ok)" : "var(--danger)"}">${d >= 0 ? "應收 " : "應付 "}${money(Math.abs(d))}</td></tr>`; }).join("")}
+      </tbody></table></div></div>
+  </div></div>`;
+}
+function overviewHTML(t) {
+  const rows = q(`SELECT d.day_number, d.trip_date, d.memo, i.start_time, i.end_time, i.transport, i.notes, p.name AS place_name, c.category_name
+    FROM TripDays d LEFT JOIN ItineraryItems i ON i.day_id = d.day_id LEFT JOIN Places p ON p.place_id = i.place_id LEFT JOIN Categories c ON c.category_id = p.category_id
+    WHERE d.trip_id = ? ORDER BY d.day_number, i.sort_order, i.start_time`, [t.trip_id]);
+  const days = [];
+  rows.forEach(r => { let d = days.find(x => x.n === r.day_number); if (!d) { d = { n: r.day_number, date: r.trip_date, memo: r.memo, items: [] }; days.push(d); } if (r.start_time || r.place_name || r.notes) d.items.push(r); });
+  return `<p class="muted" style="margin-top:0">一次查詢 TripDays、ItineraryItems、Places、Categories 四張表（LEFT JOIN），依天數與順序排列。</p>
+  ${days.map(d => `<div class="ov-day"><div><h3>第 ${d.n} 天</h3><div class="muted num">${md(d.date)}（${wd(d.date)}）</div></div>
+    <div class="ov-list">${d.memo ? `<div><span class="muted">備忘</span><span>${esc(d.memo)}</span></div>` : ""}
+    ${d.items.length ? d.items.map(i => `<div><span class="num" style="color:var(--accent);font-weight:600">${t5(i.start_time)}${i.end_time ? "–" + t5(i.end_time) : ""}</span><span>${esc(i.place_name || i.notes || "自由活動")}${i.category_name ? `　<span class="pill">${esc(i.category_name)}</span>` : ""}${i.transport ? `<span class="muted small">　${esc(i.transport)}</span>` : ""}</span></div>`).join("") : `<div><span></span><span class="muted">尚未安排</span></div>`}</div></div>`).join("")}`;
+}
+
+/* ---- 景點查詢 ---- */
+function placesHTML() {
+  const cats = q("SELECT * FROM Categories ORDER BY category_id", [], true);
+  const params = [], where = [];
+  if (S.placeQ) { where.push("(p.name LIKE ? OR p.address LIKE ?)"); params.push("%" + S.placeQ + "%", "%" + S.placeQ + "%"); }
+  if (S.placeCat) { where.push("p.category_id = ?"); params.push(Number(S.placeCat)); }
+  const ps = q(`SELECT p.*, c.category_name, (SELECT COUNT(*) FROM ItineraryItems i WHERE i.place_id = p.place_id) AS used
+    FROM Places p JOIN Categories c ON c.category_id = p.category_id ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY c.category_id, p.name`, params);
+  return `<div class="spread"><div><h2 class="page">景點查詢</h2><div class="muted">共 ${ps.length} 筆，範例資料只填到行政區，實際地址請自行確認</div></div><button class="btn" data-act="newPlace">＋ 新增景點</button></div>
+  <div class="toolbar"><input id="pl-q" type="search" placeholder="搜尋名稱或地址，例如：安平" value="${esc(S.placeQ)}" aria-label="搜尋景點">
+    <select id="pl-cat" aria-label="類別"><option value="">全部類別</option>${cats.map(c => `<option value="${c.category_id}" ${String(c.category_id) === S.placeCat ? "selected" : ""}>${esc(c.category_name)}</option>`).join("")}</select></div>
+  ${ps.length ? `<div class="places">${ps.map(p => `<div class="place">
+    <div class="spread"><h3>${esc(p.name)}</h3><span class="pill">${esc(p.category_name)}</span></div>
+    <div class="muted small">${esc(p.address || "未填地址")}</div>
+    ${p.phone || p.open_hours ? `<div class="small">${[p.phone, p.open_hours].filter(Boolean).map(esc).join("・")}</div>` : ""}
+    <div class="spread" style="margin-top:6px"><span class="muted small">出現在 ${p.used} 個行程項目</span><button class="btn sm" data-add-place="${p.place_id}">加入行程</button></div>
+  </div>`).join("")}</div>` : `<div class="empty">找不到符合的景點，試試其他關鍵字，或新增一個景點。</div>`}`;
+}
+function newPlace() {
+  const cats = q("SELECT * FROM Categories ORDER BY category_id", [], true);
+  modal(`<h3>新增景點</h3>
+    <label class="f">名稱<input name="name" required maxlength="100"></label>
+    <label class="f">類別<select name="category_id">${cats.map(c => `<option value="${c.category_id}">${esc(c.category_name)}</option>`).join("")}</select></label>
+    <label class="f">地址<input name="address" maxlength="200"></label>
+    <div class="grid2"><label class="f">電話<input name="phone" maxlength="20"></label><label class="f">營業時間<input name="open_hours" maxlength="100" placeholder="例：09:00–17:00"></label></div>
+    <div class="acts"><button type="button" class="btn plain" data-close>取消</button><button class="btn">新增</button></div>`,
+    d => attempt(() => tx(() => run("INSERT INTO Places(category_id, name, address, phone, open_hours) VALUES(?, ?, ?, ?, ?)", [Number(d.category_id), d.name.trim(), d.address.trim() || null, d.phone.trim() || null, d.open_hours.trim() || null])), "已新增景點") !== undefined);
+}
+function addPlaceToTrip(placeId) {
+  const p = q1("SELECT name FROM Places WHERE place_id = ?", [placeId], true);
+  const days = q(`SELECT d.day_id, d.day_number, d.trip_date, t.title FROM TripDays d JOIN Trips t ON t.trip_id = d.trip_id JOIN TripMembers m ON m.trip_id = t.trip_id
+    WHERE m.user_id = ? AND m.role IN ('owner','editor') ORDER BY t.start_date, d.day_number`, [S.user.user_id], true);
+  if (!days.length) { toast("你目前沒有可以編輯的行程", true); return; }
+  modal(`<h3>把「${esc(p.name)}」加入行程</h3>
+    <label class="f">行程與天數<select name="day_id">${days.map(d => `<option value="${d.day_id}">${esc(d.title)}｜第 ${d.day_number} 天 ${md(d.trip_date)}</option>`).join("")}</select></label>
+    <div class="grid2"><label class="f">開始時間<input type="time" name="start_time"></label><label class="f">結束時間<input type="time" name="end_time"></label></div>
+    <div class="acts"><button type="button" class="btn plain" data-close>取消</button><button class="btn">加入</button></div>`,
+    d => attempt(() => tx(() => {
+      const mx = q1("SELECT IFNULL(MAX(sort_order),0) AS m FROM ItineraryItems WHERE day_id = ?", [Number(d.day_id)]).m;
+      run("INSERT INTO ItineraryItems(day_id, place_id, start_time, end_time, sort_order) VALUES(?, ?, ?, ?, ?)", [Number(d.day_id), placeId, d.start_time || null, d.end_time || null, mx + 1]);
+    }), "已加入行程") !== undefined);
+}
+
+/* ---- 花費紀錄（總表） ---- */
+function expensesHomeHTML() {
+  const rows = q(`SELECT t.trip_id, t.title, t.budget, IFNULL(SUM(e.amount),0) AS spent, COUNT(e.expense_id) AS n,
+      IFNULL(SUM(CASE WHEN e.paid_by = ? THEN e.amount END),0) AS mine
+    FROM Trips t JOIN TripMembers m ON m.trip_id = t.trip_id AND m.user_id = ? LEFT JOIN Expenses e ON e.trip_id = t.trip_id
+    GROUP BY t.trip_id ORDER BY t.start_date`, [S.user.user_id, S.user.user_id]);
+  return `<h2 class="page">花費紀錄</h2><div class="muted" style="margin-bottom:18px">每個行程的總花費與預算，點「查看明細」進入該行程的花費頁</div>
+  <div class="tablewrap"><table class="data"><thead><tr><th>行程</th><th style="text-align:right">筆數</th><th style="text-align:right">總花費</th><th style="text-align:right">我付的</th><th style="text-align:right">預算</th><th>使用率</th><th></th></tr></thead><tbody>
+  ${rows.map(r => { const pct = r.budget ? Math.min(100, r.spent / r.budget * 100) : 0; return `<tr><td>${esc(r.title)}</td><td class="n">${r.n}</td><td class="n">${money(r.spent)}</td><td class="n">${money(r.mine)}</td><td class="n">${r.budget ? money(r.budget) : "—"}</td>
+    <td style="min-width:120px">${r.budget ? `<div class="track"><div class="fill" style="width:${pct.toFixed(1)}%;background:${r.spent > r.budget ? "var(--danger)" : "var(--accent)"}"></div></div><span class="small muted num">${(r.spent / r.budget * 100).toFixed(0)}%</span>` : "—"}</td>
+    <td><button class="btn sm" data-exp-open="${r.trip_id}">查看明細</button></td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">還沒有行程</td></tr>`}
+  </tbody></table></div>`;
+}
+
+/* ---- 資料庫主控台 ---- */
+const TABLES = ["Users", "Trips", "TripMembers", "TripDays", "ItineraryItems", "Places", "Categories", "Expenses"];
+const EXAMPLES = [
+  ["每個行程的總花費", "SELECT t.title AS 行程, COUNT(e.expense_id) AS 筆數, SUM(e.amount) AS 總花費\nFROM Trips t LEFT JOIN Expenses e ON e.trip_id = t.trip_id\nGROUP BY t.trip_id;"],
+  ["最常被安排的景點", "SELECT p.name AS 景點, c.category_name AS 類別, COUNT(i.item_id) AS 次數\nFROM Places p\nJOIN Categories c ON c.category_id = p.category_id\nLEFT JOIN ItineraryItems i ON i.place_id = p.place_id\nGROUP BY p.place_id\nORDER BY 次數 DESC\nLIMIT 5;"],
+  ["某行程的完整時程", "SELECT d.day_number AS 天, d.trip_date AS 日期, i.start_time AS 開始, IFNULL(p.name, i.notes) AS 項目\nFROM TripDays d\nJOIN ItineraryItems i ON i.day_id = d.day_id\nLEFT JOIN Places p ON p.place_id = i.place_id\nWHERE d.trip_id = 1\nORDER BY d.day_number, i.sort_order;"],
+  ["旅伴與角色（多對多）", "SELECT t.title AS 行程, u.username AS 旅伴, m.role AS 角色\nFROM TripMembers m\nJOIN Trips t ON t.trip_id = m.trip_id\nJOIN Users u ON u.user_id = m.user_id\nORDER BY t.trip_id;"],
+];
+function sqlHTML() {
+  const counts = TABLES.map(t => [t, db.exec(`SELECT COUNT(*) FROM ${t}`)[0].values[0][0]]);
+  const r = S.sqlResult;
+  return `<h2 class="page">資料庫主控台</h2><div class="muted" style="margin-bottom:16px">直接對系統的 SQLite 資料庫下 SQL，報告時可以示範 JOIN、GROUP BY 與資料表結構</div>
+  <div class="split"><div style="display:grid;gap:12px;min-width:0">
+    <div class="chips">${EXAMPLES.map((e, i) => `<button class="chip" style="font-family:var(--font)" data-example="${i}">${esc(e[0])}</button>`).join("")}</div>
+    <textarea id="sql-text" class="sql-area" spellcheck="false" aria-label="SQL 指令">${esc(S.sqlText)}</textarea>
+    <div class="row"><button class="btn" data-act="runSQL">執行（Ctrl + Enter）</button><span class="muted small">寫入指令（INSERT、UPDATE、DELETE）也會生效並儲存</span></div>
+    ${r ? (r.error ? `<p class="toast err" style="position:static;transform:none;border-radius:8px;animation:none">${esc(r.error)}</p>` :
+      r.sets.length ? r.sets.map(s => `<div class="tablewrap"><table class="data"><thead><tr>${s.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${s.values.slice(0, 200).map(v => `<tr>${v.map(x => `<td class="${typeof x === "number" ? "n" : ""}">${x === null ? '<span class="muted">NULL</span>' : esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="muted small">${s.values.length} 列</div>`).join("") : `<p class="note">指令已執行，影響 ${r.changes} 列。</p>`) : ""}
+  </div>
+  <div style="display:grid;gap:12px;align-content:start">
+    <div class="panel"><h3 style="font-size:16px;margin-bottom:10px">8 張資料表</h3>
+      <div class="tablewrap" style="background:var(--bg)"><table class="data"><thead><tr><th>資料表</th><th style="text-align:right">筆數</th><th></th></tr></thead><tbody>
+      ${counts.map(([t, n]) => `<tr><td style="font-family:var(--mono);font-size:13px">${t}</td><td class="n">${n}</td><td style="text-align:right;white-space:nowrap"><button class="btn sm plain" data-browse="${t}">瀏覽</button> <button class="btn sm plain" data-ddl="${t}">結構</button></td></tr>`).join("")}
+      </tbody></table></div></div>
+    <div class="panel" style="display:grid;gap:10px"><h3 style="font-size:16px">重設資料</h3>
+      <p class="muted small" style="margin:0">資料存在這個瀏覽器裡。示範前可以清空你新增的內容，回到範例資料。</p>
+      <div><button class="btn ghost" data-act="reset">重設為範例資料</button></div></div>
+  </div></div>`;
+}
+function runSQL() {
+  const text = document.getElementById("sql-text").value; S.sqlText = text;
+  logSQL(text.replace(/\s+/g, " ").trim(), /^\s*select|^\s*pragma|^\s*with/i.test(text) ? "r" : "w");
+  try {
+    const before = db.getRowsModified ? null : null;
+    const sets = db.exec(text);
+    const changes = db.getRowsModified();
+    if (!/^\s*(select|with|pragma)/i.test(text)) save();
+    S.sqlResult = { sets, changes };
+  } catch (e) { S.sqlResult = { error: "SQL 錯誤：" + e.message }; logSQL("錯誤：" + e.message, "err"); }
+  render();
+}
+
+/* ---- SQL 紀錄抽屜 ---- */
+function drawerHTML() {
+  return `<button class="drawer-btn" data-drawer aria-expanded="${drawerOpen}">SQL 紀錄 ${sqlLog.length}</button>
+  ${drawerOpen ? `<div class="drawer" role="dialog" aria-label="SQL 紀錄"><header><span>系統剛剛執行的 SQL（新的在上面）</span><span class="row" style="gap:6px"><button data-clear-log>清空</button><button data-drawer>關閉</button></span></header>
+    <div class="log">${sqlLog.length ? sqlLog.map(e => `<div class="e ${e.kind}"><div class="t">${e.t}${e.kind === "w" ? "　寫入" : e.kind === "err" ? "　錯誤" : ""}</div>${esc(e.text)}</div>`).join("") : '<div class="t">尚無紀錄，操作系統後這裡會顯示對應的 SQL。</div>'}</div></div>` : ""}`;
+}
+function bindDrawer() {
+  document.querySelectorAll("[data-drawer]").forEach(b => b.onclick = () => { drawerOpen = !drawerOpen; S.user ? render() : refreshDrawerOnly(); });
+  document.querySelector("[data-clear-log]")?.addEventListener("click", () => { sqlLog.length = 0; S.user ? render() : refreshDrawerOnly(); });
+}
+function refreshDrawerOnly() { document.querySelectorAll(".drawer-btn,.drawer").forEach(e => e.remove()); $app.insertAdjacentHTML("beforeend", drawerHTML()); bindDrawer(); }
+
+/* ================= 事件 ================= */
+function afterRender() {
+  bindDrawer();
+  const m = document.getElementById("main"); if (!m) return;
+  // item form
+  const f = document.getElementById("item-form");
+  if (f) f.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const d = Object.fromEntries(new FormData(f));
+    const vals = [d.place_id ? Number(d.place_id) : null, d.start_time || null, d.end_time || null, d.transport.trim() || null, d.notes.trim() || null];
+    if (!vals[0] && !vals[4]) { toast("請選擇景點，或在備註寫下項目名稱", true); return; }
+    if (S.editItem) {
+      const id = S.editItem;
+      if (attempt(() => tx(() => run("UPDATE ItineraryItems SET place_id = ?, start_time = ?, end_time = ?, transport = ?, notes = ? WHERE item_id = ?", [...vals, id])), "已更新行程項目") !== undefined) { S.editItem = null; render(); }
+    } else {
+      attempt(() => tx(() => {
+        const mx = q1("SELECT IFNULL(MAX(sort_order),0) AS m FROM ItineraryItems WHERE day_id = ?", [S.dayId]).m;
+        run("INSERT INTO ItineraryItems(day_id, place_id, start_time, end_time, transport, notes, sort_order) VALUES(?, ?, ?, ?, ?, ?, ?)", [S.dayId, ...vals, mx + 1]);
+      }), "已新增行程項目");
+    }
+  });
+  const inv = document.getElementById("invite-form");
+  if (inv) inv.addEventListener("submit", ev => {
+    ev.preventDefault(); const d = Object.fromEntries(new FormData(inv));
+    const u = q1("SELECT user_id FROM Users WHERE username = ?", [d.username.trim()]);
+    if (!u) { toast("找不到帳號「" + d.username.trim() + "」", true); return; }
+    attempt(() => tx(() => run("INSERT INTO TripMembers(trip_id, user_id, role) VALUES(?, ?, ?)", [S.tripId, u.user_id, d.role])), "已邀請 " + d.username.trim());
+  });
+  const ef = document.getElementById("exp-form");
+  if (ef) ef.addEventListener("submit", ev => {
+    ev.preventDefault(); const d = Object.fromEntries(new FormData(ef));
+    attempt(() => tx(() => run("INSERT INTO Expenses(trip_id, paid_by, amount, expense_type, note, spent_on) VALUES(?, ?, ?, ?, ?, ?)", [S.tripId, Number(d.paid_by), Number(d.amount), d.expense_type, d.note.trim() || null, d.spent_on || null])), "已新增花費");
+  });
+  const pq = document.getElementById("pl-q");
+  if (pq) { pq.addEventListener("input", () => { S.placeQ = pq.value.trim(); const pos = pq.selectionStart; render(); const n = document.getElementById("pl-q"); n.focus(); n.setSelectionRange(pos, pos); }); }
+  const pc = document.getElementById("pl-cat"); if (pc) pc.onchange = () => { S.placeCat = pc.value; render(); };
+  const st = document.getElementById("sql-text"); if (st) st.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runSQL(); } });
+  document.querySelectorAll("[data-role]").forEach(s => s.onchange = () => attempt(() => tx(() => run("UPDATE TripMembers SET role = ? WHERE trip_id = ? AND user_id = ?", [s.value, S.tripId, Number(s.dataset.role)])), "已變更角色"));
+}
+
+document.addEventListener("click", ev => {
+  const el = ev.target.closest("button"); if (!el || !$app.contains(el) && !$layer.contains(el)) return;
+  const D = el.dataset;
+  if (D.go) { S.view = D.go; S.editItem = null; render(); window.scrollTo(0, 0); return; }
+  if (D.open) return openTrip(Number(D.open));
+  if (D.expOpen) { openTrip(Number(D.expOpen)); S.tab = "expenses"; render(); return; }
+  if (D.tab) { S.tab = D.tab; S.editItem = null; render(); return; }
+  if (D.day) { S.dayId = Number(D.day); S.editItem = null; render(); return; }
+  if (D.editItem) { S.editItem = Number(D.editItem); render(); document.getElementById("if-place")?.focus(); return; }
+  if (D.move) {
+    const id = Number(D.move), dir = Number(D.dir);
+    const items = q("SELECT item_id, sort_order FROM ItineraryItems WHERE day_id = ? ORDER BY sort_order, start_time", [S.dayId], true);
+    const k = items.findIndex(i => i.item_id === id), o = items[k + dir]; if (!o) return;
+    attempt(() => tx(() => { items.forEach((it, idx) => it.sort_order = idx + 1); const a = items[k], b = items[k + dir];
+      run("UPDATE ItineraryItems SET sort_order = ? WHERE item_id = ?", [b.sort_order, a.item_id]); run("UPDATE ItineraryItems SET sort_order = ? WHERE item_id = ?", [a.sort_order, b.item_id]);
+      items.forEach((it, idx) => { if (it !== a && it !== b) run("UPDATE ItineraryItems SET sort_order = ? WHERE item_id = ?", [idx + 1, it.item_id]); }); }));
+    return;
+  }
+  if (D.delItem) { const id = Number(D.delItem); confirmBox("刪除這個行程項目？", "刪除後無法復原。", "刪除", () => attempt(() => tx(() => run("DELETE FROM ItineraryItems WHERE item_id = ?", [id])), "已刪除")); return; }
+  if (D.delExp) { const id = Number(D.delExp); attempt(() => tx(() => run("DELETE FROM Expenses WHERE expense_id = ?", [id])), "已刪除花費"); return; }
+  if (D.kick) { const uid = Number(D.kick); confirmBox("移除這位旅伴？", "對方將看不到這個行程，他記錄的花費仍會保留。", "移除", () => attempt(() => tx(() => run("DELETE FROM TripMembers WHERE trip_id = ? AND user_id = ?", [S.tripId, uid])), "已移除旅伴")); return; }
+  if (D.addPlace) return addPlaceToTrip(Number(D.addPlace));
+  if (D.example) { S.sqlText = EXAMPLES[Number(D.example)][1]; render(); runSQL(); return; }
+  if (D.browse) { S.sqlText = `SELECT * FROM ${D.browse};`; render(); runSQL(); return; }
+  if (D.ddl) { const r = q1("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [D.ddl]); modal(`<h3>${esc(D.ddl)} 的建表語法</h3><pre class="code">${esc(r.sql)}</pre><div class="acts"><button type="button" class="btn" data-close>關閉</button></div>`, () => {}); return; }
+  switch (D.act) {
+    case "logout": S.user = null; S.view = "trips"; render(); return;
+    case "newTrip": return newTrip();
+    case "newPlace": return newPlace();
+    case "cancelEdit": S.editItem = null; render(); return;
+    case "runSQL": return runSQL();
+    case "editTrip": { const t = getTrip(); modal(tripForm(t), d => attempt(() => tx(() => {
+        run("UPDATE Trips SET title = ?, destination = ?, start_date = ?, end_date = ?, budget = ? WHERE trip_id = ?", [d.title.trim(), d.destination.trim() || null, d.start_date, d.end_date, Number(d.budget) || 0, S.tripId]);
+        syncDays(S.tripId, d.start_date, d.end_date); }), "已更新行程") !== undefined); return; }
+    case "delTrip": { const t = getTrip(); confirmBox("刪除「" + t.title + "」？", "這個行程的天數、行程項目、旅伴與花費紀錄會一起刪除（ON DELETE CASCADE），無法復原。", "刪除行程", () => { attempt(() => tx(() => run("DELETE FROM Trips WHERE trip_id = ?", [S.tripId])), "已刪除行程"); S.view = "trips"; render(); }); return; }
+    case "memo": { const d = q1("SELECT memo FROM TripDays WHERE day_id = ?", [S.dayId], true); modal(`<h3>當日備忘</h3><label class="f">內容<input name="memo" maxlength="200" value="${esc(d.memo)}"></label><div class="acts"><button type="button" class="btn plain" data-close>取消</button><button class="btn">儲存</button></div>`, v => attempt(() => tx(() => run("UPDATE TripDays SET memo = ? WHERE day_id = ?", [v.memo.trim() || null, S.dayId])), "已儲存備忘") !== undefined); return; }
+    case "reset": confirmBox("重設為範例資料？", "你新增或修改的所有資料都會清除，回到最初的範例行程。", "重設", async () => { await resetDB(); S.user = q1("SELECT user_id, username, email FROM Users WHERE username = ?", [S.user.username], true) || null; S.view = S.user ? "sql" : "trips"; S.sqlResult = null; toast("已重設為範例資料"); render(); }); return;
+  }
+});
+
+initDB().then(() => render()).catch(e => { $app.innerHTML = `<div class="loading"><div><p>資料庫引擎載入失敗：${esc(e.message)}</p><p class="muted">請重新整理頁面再試一次。</p></div></div>`; });
+</script>
+
+</body></html>
