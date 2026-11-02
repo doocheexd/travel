@@ -1,6 +1,9 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>旅遊行程編輯系統</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
@@ -166,6 +169,9 @@ pre.code{font-family:var(--mono);font-size:13px;background:var(--code-bg);color:
 .note{font-size:13px;color:var(--muted);background:var(--surface);border-radius:8px;padding:8px 12px}
 @media (prefers-reduced-motion:no-preference){.toast{animation:pop .2s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,8px)}}}
 </style>
+</head>
+<body>
+
 
 <div id="app"><div class="loading">正在載入資料庫引擎…</div></div>
 <div id="layer"></div>
@@ -861,4 +867,5 @@ document.addEventListener("click", ev => {
 initDB().then(() => render()).catch(e => { $app.innerHTML = `<div class="loading"><div><p>資料庫引擎載入失敗：${esc(e.message)}</p><p class="muted">請重新整理頁面再試一次。</p></div></div>`; });
 </script>
 
-</body></html>
+</body>
+</html>
